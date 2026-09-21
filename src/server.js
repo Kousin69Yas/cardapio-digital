@@ -14,10 +14,22 @@ const app = express();
 
 const PORT = Number(process.env.PORT || 3000);
 
-const frontendPath = path.resolve(
-  __dirname,
-  "../../frontend"
-);
+app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`Servidor iniciado na porta ${PORT}`);
+
+  try {
+    await testConnection();
+
+    console.log(
+      "Conexão com o MySQL realizada com sucesso."
+    );
+  } catch (error) {
+    console.error(
+      "Erro ao conectar ao MySQL:",
+      error.message
+    );
+  }
+});
 
 /*
 |--------------------------------------------------------------------------
