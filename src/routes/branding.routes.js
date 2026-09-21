@@ -1,46 +1,26 @@
 const express = require("express");
 
-const { query } = require("../db");
-
 const router = express.Router();
 
 /*
 |--------------------------------------------------------------------------
 | GET /api/branding
 |--------------------------------------------------------------------------
-| Retorna os dados da identidade visual do restaurante.
+| Retorna a identidade visual do restaurante.
+|
+| Como o banco antigo não possui a tabela restaurant_branding,
+| estes dados ficam definidos nesta rota.
 |--------------------------------------------------------------------------
 */
 
-router.get("/", async (req, res) => {
-  try {
-    const sql = `
-      SELECT
-        id,
-        restaurant_name,
-        slogan,
-        logo_url
-      FROM restaurant_branding
-      ORDER BY id
-      LIMIT 1
-    `;
+router.get("/", (req, res) => {
+  return res.status(200).json({
+    restaurant_name: "Sabor & Mesa",
 
-    const rows = await query(sql);
+    slogan: "Seu momento começa no primeiro sabor.",
 
-    if (rows.length === 0) {
-      return res.status(404).json({
-        message: "Dados da identidade visual não encontrados."
-      });
-    }
-
-    return res.status(200).json(rows[0]);
-  } catch (error) {
-    console.error("Erro ao buscar branding:", error);
-
-    return res.status(500).json({
-      message: "Não foi possível buscar a identidade visual."
-    });
-  }
+    logo_url: "/assets/logo.png"
+  });
 });
 
 module.exports = router;
