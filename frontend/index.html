@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Sabor & Mesa — cardápio digital com sistema de pedidos"
+  >
+
+  <meta name="theme-color" content="#691b2d">
+
+  <title>Sabor & Mesa — Cardápio Digital</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  >
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap"
+    rel="stylesheet"
+  >
+
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+
+<body>
+
+  <header class="site-header">
+    <div class="container header-content">
+
+      <a href="#" class="brand">
+        <img
+          src="./assets/logo.png"
+          alt="Logomarca Sabor & Mesa"
+          class="brand-logo"
+        >
+
+        <div class="brand-text">
+          <strong>Sabor & Mesa</strong>
+          <span>Cozinha afetiva</span>
+        </div>
+      </a>
+
+      <button
+        type="button"
+        id="open-order-button"
+        class="order-button"
+      >
+        <span>Meu pedido</span>
+        <span id="cart-counter" class="cart-counter">0</span>
+      </button>
+
+    </div>
+  </header>
+
+  <main>
+
+    <section class="hero-section">
+      <div class="container hero-content">
+
+        <div class="hero-copy">
+          <span class="eyebrow">Menu da casa</span>
+
+          <h1>
+            Seu momento começa no primeiro sabor.
+          </h1>
+
+          <p>
+            Sabores que acolhem, ingredientes que contam histórias
+            e uma mesa preparada para o seu melhor momento.
+          </p>
+
+          <button
+            type="button"
+            id="go-to-menu-button"
+            class="primary-button"
+          >
+            Ver o cardápio
+          </button>
+        </div>
+
+        <div class="hero-decoration">
+          <div class="decoration-card">
+            <span class="decoration-icon">♨</span>
+            <strong>feito à mesa</strong>
+            <small>com cuidado</small>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="menu" class="menu-section">
+      <div class="container">
+
+        <div class="menu-heading">
+          <div>
+            <span class="eyebrow eyebrow-dark">
+              Escolha seu momento
+            </span>
+
+            <h2>Nosso cardápio</h2>
+          </div>
+
+          <div class="search-wrapper">
+            <span class="search-icon">⌕</span>
+
+            <input
+              type="search"
+              id="search-input"
+              placeholder="Buscar pelo nome do produto..."
+              autocomplete="off"
+            >
+          </div>
+        </div>
+
+        <nav
+          id="category-menu"
+          class="category-menu"
+          aria-label="Categorias do cardápio"
+        >
+          <button
+            type="button"
+            class="category-button active"
+            data-category="Todas"
+          >
+            Todas
+          </button>
+        </nav>
+
+        <div class="menu-layout">
+
+          <section class="products-section">
+
+            <div
+              id="products-loading"
+              class="loading-message"
+            >
+              Carregando cardápio...
+            </div>
+
+            <div
+              id="products-empty"
+              class="empty-message hidden"
+            >
+              Nenhum produto encontrado.
+            </div>
+
+            <div
+              id="products-grid"
+              class="products-grid"
+            >
+            </div>
+
+          </section>
+
+          <aside
+            id="order-panel"
+            class="order-panel"
+          >
+
+            <div class="order-panel-header">
+              <div>
+                <span>Seu pedido</span>
+                <h2>Meu Pedido</h2>
+              </div>
+
+              <button
+                type="button"
+                id="close-order-button"
+                class="close-order-button"
+                aria-label="Fechar pedido"
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              id="order-items"
+              class="order-items"
+            >
+              <div
+                id="empty-order-message"
+                class="empty-order-message"
+              >
+                <div class="empty-order-icon">🛍</div>
+
+                <h3>Sua mesa está esperando</h3>
+
+                <p>
+                  Adicione seus favoritos e eles aparecerão aqui.
+                </p>
+              </div>
+            </div>
+
+            <div class="order-form">
+
+              <div class="form-grid">
+
+                <label class="form-label">
+                  Seu nome
+
+                  <input
+                    type="text"
+                    id="customer-name"
+                    placeholder="Ex.: Ana"
+                    autocomplete="name"
+                  >
+                </label>
+
+                <label class="form-label">
+                  Mesa
+
+                  <input
+                    type="number"
+                    id="table-number"
+                    placeholder="Ex.: 12"
+                    min="1"
+                  >
+                </label>
+
+              </div>
+
+              <label class="waiter-option">
+                <input
+                  type="checkbox"
+                  id="waiter-fee-checkbox"
+                >
+
+                <span>
+                  <strong>Incluir 10% do garçom</strong>
+                  <small>Taxa opcional de atendimento</small>
+                </span>
+
+                <strong id="waiter-fee-value">
+                  R$ 0,00
+                </strong>
+              </label>
+
+              <div class="order-totals">
+
+                <div class="total-line">
+                  <span>Subtotal</span>
+                  <strong id="subtotal-value">
+                    R$ 0,00
+                  </strong>
+                </div>
+
+                <div class="total-line">
+                  <span>Garçom (10% )</span>
+                  <strong id="waiter-fee-total">
+                    R$ 0,00
+                  </strong>
+                </div>
+
+                <div class="total-line total-final">
+                  <span>Total</span>
+                  <strong id="total-value">
+                    R$ 0,00
+                  </strong>
+                </div>
+
+              </div>
+
+              <button
+                type="button"
+                id="finalize-order-button"
+                class="finalize-button"
+                disabled
+              >
+                FINALIZAR PEDIDO
+              </button>
+
+            </div>
+
+          </aside>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <img
+      src="./assets/logo.png"
+      alt=""
+      class="footer-logo"
+    >
+
+    <strong>Sabor & Mesa</strong>
+
+    <p>
+      Seu momento começa no primeiro sabor.
+    </p>
+  </footer>
+
+  <div
+    id="confirmation-modal"
+    class="modal hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="confirmation-title"
+  >
+    <div class="modal-overlay"></div>
+
+    <div class="modal-content">
+
+      <button
+        type="button"
+        id="close-modal-button"
+        class="modal-close-button"
+        aria-label="Fechar confirmação"
+      >
+        ×
+      </button>
+
+      <div class="confirmation-icon">✓</div>
+
+      <span class="eyebrow eyebrow-dark">
+        Pedido confirmado
+      </span>
+
+      <h2 id="confirmation-title">
+        Obrigado!
+      </h2>
+
+      <p id="confirmation-message"></p>
+
+      <div
+        id="confirmation-items"
+        class="confirmation-items"
+      >
+      </div>
+
+      <div class="confirmation-totals">
+
+        <div class="total-line">
+          <span>Subtotal</span>
+          <strong id="confirmation-subtotal">
+            R$ 0,00
+          </strong>
+        </div>
+
+        <div class="total-line">
+          <span>Garçom (10%)</span>
+          <strong id="confirmation-waiter-fee">
+            R$ 0,00
+          </strong>
+        </div>
+
+        <div class="total-line total-final">
+          <span>Total</span>
+          <strong id="confirmation-total">
+            R$ 0,00
+          </strong>
+        </div>
+
+      </div>
+
+      <button
+        type="button"
+        id="continue-button"
+        class="primary-button full-width"
+      >
+        Continuar navegando
+      </button>
+
+    </div>
+  </div>
+
+  <script src="./js/api.js"></script>
+  <script src="./js/state.js"></script>
+  <script src="./js/app.js"></script>
+
+</body>
+</html>
