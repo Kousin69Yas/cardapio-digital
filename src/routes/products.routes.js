@@ -8,39 +8,24 @@ const router = express.Router();
 |--------------------------------------------------------------------------
 | GET /api/products
 |--------------------------------------------------------------------------
-| Lista todos os produtos ativos.
-|
-| Exemplos:
-|
-| GET /api/products
-| GET /api/products?search=chocolate
-| GET /api/products?category=Entradas
-| GET /api/products?search=chocolate&category=Sobremesas
+| Lista os produtos da tabela produtos.
 |--------------------------------------------------------------------------
 */
 
 router.get("/", async (req, res) => {
   try {
     const search = String(req.query.search || "").trim();
-
-    const category = String(
-      req.query.category || ""
-    ).trim();
+    const category = String(req.query.category || "").trim();
 
     let sql = `
       SELECT
-        p.id,
-        p.name,
-        p.description,
-        p.price,
-        p.image_url,
-        p.category_id,
-        c.name AS category,
-        c.slug AS category_slug
-      FROM products p
-      INNER JOIN categories c
-        ON c.id = p.category_id
-      WHERE p.active = TRUE
+        id,
+        nome,
+        descricao,
+        preco,
+        categoria_id
+      FROM produtos
+      WHERE 1 = 1
     `;
 
     const params = [];
@@ -48,41 +33,55 @@ router.get("/", async (req, res) => {
     if (search.length > 0) {
       sql += `
         AND (
-          LOWER(p.name) LIKE LOWER(?)
-          OR LOWER(p.description) LIKE LOWER(?)
+          LOWER(nome) LIKE LOWER(?)
+          OR LOWER(descricao) LIKE LOWER(?)
         )
       `;
 
       const searchValue = `%${search}%`;
 
-      params.push(searchValue);
-      params.push(searchValue);
+      params.push(searchValue, searchValue);
     }
 
+    /*
+     * O banco possui categoria_id.
+     * Por enquanto, o filtro por categoria usa o ID numérico.
+     * Exemplo: /api/products?category=1
+     */
     if (category.length > 0 && category !== "Todas") {
-      sql += `
-        AND (
-          c.name = ?
-          OR c.slug = ?
-        )
-      `;
+      const categoryId = Number(category);
 
-      params.push(category);
-      params.push(category);
+      if (Number.isInteger(categoryId) && categoryId > 0) {
+        sql += `
+          AND categoria_id = ?
+        `;
+
+        params.push(categoryId);
+      }
     }
 
     sql += `
-      ORDER BY c.id ASC, p.id ASC
+      ORDER BY categoria_id ASC, id ASC
     `;
 
-    const products = await query(sql, params);
+    const rows = await query(sql, params);
+
+    const products = rows.map((row) => ({
+      id: Number(row.id),
+      name: row.nome,
+      description: row.descricao || "",
+      price: Number(row.preco || 0),
+      image_url: null,
+      category_id: Number(row.categoria_id)
+    }));
 
     return res.status(200).json(products);
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
 
     return res.status(500).json({
-      message: "Não foi possível buscar os produtos."
+      message: "Não foi possível buscar os produtos.",
+      error: error.message
     });
   }
 });
@@ -91,7 +90,7 @@ router.get("/", async (req, res) => {
 |--------------------------------------------------------------------------
 | GET /api/products/:id
 |--------------------------------------------------------------------------
-| Busca um produto específico.
+| Busca um produto específico pelo ID.
 |--------------------------------------------------------------------------
 */
 
@@ -105,38 +104,45 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const sql = `
-      SELECT
-        p.id,
-        p.name,
-        p.description,
-        p.price,
-        p.image_url,
-        p.category_id,
-        c.name AS category,
-        c.slug AS category_slug
-      FROM products p
-      INNER JOIN categories c
-        ON c.id = p.category_id
-      WHERE p.id = ?
-        AND p.active = TRUE
-      LIMIT 1
-    `;
+    const rows = await query(
+      `
+        SELECT
+          id,
+          nome,
+          descricao,
+          preco,
+          categoria_id
+        FROM produtos
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [productId]
+    );
 
-    const products = await query(sql, [productId]);
-
-    if (products.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({
         message: "Produto não encontrado."
       });
     }
 
-    return res.status(200).json(products[0]);
+    const row = rows[0];
+
+    const product = {
+      id: Number(row.id),
+      name: row.nome,
+      description: row.descricao || "",
+      price: Number(row.preco || 0),
+      image_url: null,
+      category_id: Number(row.categoria_id)
+    };
+
+    return res.status(200).json(product);
   } catch (error) {
     console.error("Erro ao buscar produto:", error);
 
     return res.status(500).json({
-      message: "Não foi possível buscar o produto."
+      message: "Não foi possível buscar o produto.",
+      error: error.message
     });
   }
 });
