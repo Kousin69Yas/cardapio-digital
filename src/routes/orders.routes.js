@@ -8,31 +8,28 @@ const {
 const router = express.Router();
 
 function roundMoney(value) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
-/*
-|--------------------------------------------------------------------------
-| POST /api/orders
-|--------------------------------------------------------------------------
-| Cria um novo pedido.
-|--------------------------------------------------------------------------
-|
-| Formato esperado:
-|
-| {
-|   "customer_name": "Maria Silva",
-|   "table_number": 12,
-|   "waiter_fee_selected": true,
-|   "items": [
-|     {
-|       "product_id": 1,
-|       "quantity": 2
-|     }
-|   ]
-| }
-|--------------------------------------------------------------------------
-*/
+function centsToReais(cents) {
+  return roundMoney(Number(cents || 0) / 100);
+}
+
+async function ensureOrderItemsTable(connection) {
+  await connection.execute(`
+    CREATE TABLE IF NOT EXISTS itens_pedido (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      pedido_id INT NOT NULL,
+      produto_id BIGINT UNSIGNED NOT NULL,
+      nome_produto VARCHAR(255) NOT NULL,
+      preco_unitario DOUBLE NOT NULL,
+      quantidade INT NOT NULL,
+      total_item DOUBLE NOT NULL,
+      criado_em DATE NOT NULL DEFAULT (CURRENT_DATE),
+      INDEX idx_itens_pedido_pedido (pedido_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
 
 router.post("/", async (req, res) => {
   let connection;
@@ -43,16 +40,11 @@ router.post("/", async (req, res) => {
       table_number,
       waiter_fee_selected,
       items
-    } = req.body;
+    } = req.body || {};
 
-    const customerName = String(
-      customer_name || ""
-    ).trim();
-
+    const customerName = String(customer_name || "").trim();
     const tableNumber = Number(table_number);
-
-    const waiterFeeSelected =
-      Boolean(waiter_fee_selected);
+    const waiterFeeSelected = Boolean(waiter_fee_selected);
 
     if (customerName.length < 2) {
       return res.status(400).json({
@@ -60,16 +52,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    if (customerName.length > 140) {
-      return res.status(400).json({
-        message: "O nome do cliente é muito grande."
-      });
-    }
-
-    if (
-      !Number.isInteger(tableNumber) ||
-      tableNumber <= 0
-    ) {
+    if (!Number.isInteger(tableNumber) || tableNumber <= 0) {
       return res.status(400).json({
         message: "Informe um número de mesa válido."
       });
@@ -81,24 +64,18 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const normalizedItems = items.map((item) => {
-      return {
-        product_id: Number(item.product_id),
-        quantity: Number(item.quantity)
-      };
-    });
+    const normalizedItems = items.map((item) => ({
+      product_id: Number(item.product_id),
+      quantity: Number(item.quantity)
+    }));
 
-    const hasInvalidItem = normalizedItems.some(
-      (item) => {
-        return (
-          !Number.isInteger(item.product_id) ||
-          item.product_id <= 0 ||
-          !Number.isInteger(item.quantity) ||
-          item.quantity <= 0 ||
-          item.quantity > 50
-        );
-      }
-    );
+    const hasInvalidItem = normalizedItems.some((item) => (
+      !Number.isInteger(item.product_id) ||
+      item.product_id <= 0 ||
+      !Number.isInteger(item.quantity) ||
+      item.quantity <= 0 ||
+      item.quantity > 50
+    ));
 
     if (hasInvalidItem) {
       return res.status(400).json({
@@ -107,143 +84,108 @@ router.post("/", async (req, res) => {
     }
 
     const uniqueProductIds = [
-      ...new Set(
-        normalizedItems.map(
-          (item) => item.product_id
-        )
-      )
+      ...new Set(normalizedItems.map((item) => item.product_id))
     ];
 
     connection = await getConnection();
-
     await connection.beginTransaction();
 
-    const placeholders = uniqueProductIds
-      .map(() => "?")
-      .join(", ");
+    await ensureOrderItemsTable(connection);
 
-    const productSql = `
-      SELECT
-        id,
-        name,
-        price,
-        image_url
-      FROM products
-      WHERE active = TRUE
-        AND id IN (${placeholders})
-    `;
+    const placeholders = uniqueProductIds.map(() => "?").join(", ");
 
     const [products] = await connection.execute(
-      productSql,
+      `
+        SELECT
+          id,
+          nome,
+          descricao,
+          preco
+        FROM produtos
+        WHERE id IN (${placeholders})
+      `,
       uniqueProductIds
     );
 
     if (products.length !== uniqueProductIds.length) {
       await connection.rollback();
-
       return res.status(400).json({
-        message:
-          "Um ou mais produtos não estão disponíveis."
+        message: "Um ou mais produtos não estão disponíveis."
       });
     }
 
     const productsById = new Map(
-      products.map((product) => [
-        Number(product.id),
-        product
-      ])
+      products.map((product) => [Number(product.id), product])
     );
 
-    const orderItems = normalizedItems.map(
-      (item) => {
-        const product = productsById.get(
-          item.product_id
-        );
+    const orderItems = normalizedItems.map((item) => {
+      const product = productsById.get(item.product_id);
+      const unitPriceCents = Number(product.preco || 0);
+      const itemTotalCents = unitPriceCents * item.quantity;
 
-        const unitPrice = Number(product.price);
+      return {
+        product_id: Number(product.id),
+        product_name_snapshot: product.nome,
+        unit_price_cents: unitPriceCents,
+        quantity: item.quantity,
+        item_total_cents: itemTotalCents
+      };
+    });
 
-        const itemTotal = roundMoney(
-          unitPrice * item.quantity
-        );
-
-        return {
-          product_id: Number(product.id),
-          product_name_snapshot: product.name,
-          unit_price: unitPrice,
-          quantity: item.quantity,
-          item_total: itemTotal,
-          image_url: product.image_url
-        };
-      }
+    const subtotalCents = orderItems.reduce(
+      (total, item) => total + item.item_total_cents,
+      0
     );
 
-    const subtotal = roundMoney(
-      orderItems.reduce(
-        (total, item) => total + item.item_total,
-        0
-      )
-    );
-
-    const waiterFee = waiterFeeSelected
-      ? roundMoney(subtotal * 0.1)
+    const waiterFeeCents = waiterFeeSelected
+      ? Math.round(subtotalCents * 0.1)
       : 0;
 
-    const total = roundMoney(
-      subtotal + waiterFee
+    const totalCents = subtotalCents + waiterFeeCents;
+
+    const [orderResult] = await connection.execute(
+      `
+        INSERT INTO pedidos (
+          cliente,
+          mesa,
+          subtotal,
+          taxa_garcom,
+          total,
+          criado_em
+        )
+        VALUES (?, ?, ?, ?, ?, CURRENT_DATE())
+      `,
+      [
+        customerName,
+        tableNumber,
+        centsToReais(subtotalCents),
+        centsToReais(waiterFeeCents),
+        centsToReais(totalCents)
+      ]
     );
 
-    const insertOrderSql = `
-      INSERT INTO orders (
-        customer_name,
-        table_number,
-        waiter_fee_selected,
-        subtotal,
-        waiter_fee,
-        total,
-        status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, 'finished')
-    `;
-
-    const [orderResult] =
-      await connection.execute(
-        insertOrderSql,
-        [
-          customerName,
-          tableNumber,
-          waiterFeeSelected,
-          subtotal.toFixed(2),
-          waiterFee.toFixed(2),
-          total.toFixed(2)
-        ]
-      );
-
-    const orderId = Number(
-      orderResult.insertId
-    );
-
-    const insertItemSql = `
-      INSERT INTO order_items (
-        order_id,
-        product_id,
-        product_name_snapshot,
-        unit_price,
-        quantity,
-        item_total
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
+    const orderId = Number(orderResult.insertId);
 
     for (const item of orderItems) {
       await connection.execute(
-        insertItemSql,
+        `
+          INSERT INTO itens_pedido (
+            pedido_id,
+            produto_id,
+            nome_produto,
+            preco_unitario,
+            quantidade,
+            total_item
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
         [
           orderId,
           item.product_id,
           item.product_name_snapshot,
-          item.unit_price.toFixed(2),
+          centsToReais(item.unit_price_cents),
           item.quantity,
-          item.item_total.toFixed(2)
+          centsToReais(item.item_total_cents)
         ]
       );
     }
@@ -255,14 +197,22 @@ router.post("/", async (req, res) => {
       customer_name: customerName,
       table_number: tableNumber,
       waiter_fee_selected: waiterFeeSelected,
-      subtotal,
-      waiter_fee: waiterFee,
-      total,
-      items: orderItems
+      subtotal: subtotalCents,
+      waiter_fee: waiterFeeCents,
+      total: totalCents,
+      items: orderItems.map((item) => ({
+        name: item.product_name_snapshot,
+        quantity: item.quantity,
+        item_total: item.item_total_cents
+      }))
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("Erro ao desfazer pedido:", rollbackError);
+      }
     }
 
     console.error("Erro ao criar pedido:", error);
@@ -277,14 +227,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| GET /api/orders/:id
-|--------------------------------------------------------------------------
-| Busca um pedido e seus itens.
-|--------------------------------------------------------------------------
-*/
-
 router.get("/:id", async (req, res) => {
   try {
     const orderId = Number(req.params.id);
@@ -295,25 +237,22 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const orderSql = `
-      SELECT
-        id,
-        customer_name,
-        table_number,
-        waiter_fee_selected,
-        subtotal,
-        waiter_fee,
-        total,
-        status,
-        created_at
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-    `;
-
-    const orders = await query(orderSql, [
-      orderId
-    ]);
+    const orders = await query(
+      `
+        SELECT
+          id,
+          cliente,
+          mesa,
+          subtotal,
+          taxa_garcom,
+          total,
+          criado_em
+        FROM pedidos
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [orderId]
+    );
 
     if (orders.length === 0) {
       return res.status(404).json({
@@ -321,27 +260,41 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const itemsSql = `
-      SELECT
-        id,
-        order_id,
-        product_id,
-        product_name_snapshot,
-        unit_price,
-        quantity,
-        item_total
-      FROM order_items
-      WHERE order_id = ?
-      ORDER BY id
-    `;
+    const items = await query(
+      `
+        SELECT
+          id,
+          pedido_id,
+          produto_id,
+          nome_produto,
+          preco_unitario,
+          quantidade,
+          total_item
+        FROM itens_pedido
+        WHERE pedido_id = ?
+        ORDER BY id
+      `,
+      [orderId]
+    );
 
-    const items = await query(itemsSql, [
-      orderId
-    ]);
+    const order = orders[0];
 
     return res.status(200).json({
-      ...orders[0],
-      items
+      id: Number(order.id),
+      customer_name: order.cliente,
+      table_number: Number(order.mesa),
+      subtotal: Math.round(Number(order.subtotal || 0) * 100),
+      waiter_fee: Math.round(Number(order.taxa_garcom || 0) * 100),
+      total: Math.round(Number(order.total || 0) * 100),
+      created_at: order.criado_em,
+      items: items.map((item) => ({
+        id: Number(item.id),
+        product_id: Number(item.produto_id),
+        name: item.nome_produto,
+        quantity: Number(item.quantidade),
+        unit_price: Math.round(Number(item.preco_unitario || 0) * 100),
+        item_total: Math.round(Number(item.total_item || 0) * 100)
+      }))
     });
   } catch (error) {
     console.error("Erro ao buscar pedido:", error);
